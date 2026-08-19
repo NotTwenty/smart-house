@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0d0f12">
+<title>Chytrý domek</title>
+<style>
+:root{
+  --bg:#0d0f12; --card:#161a20; --line:#252b34;
+  --fg:#eef1f5; --dim:#8b95a3;
+  --warm:#ff8a3d; --cool:#5aa9ff; --ok:#4ade80;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg);color:var(--fg);
+  font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  padding:24px 18px 48px;max-width:560px;margin:0 auto;
+  -webkit-font-smoothing:antialiased;
+}
+header{display:flex;align-items:baseline;gap:12px;margin-bottom:28px}
+h1{font-size:22px;font-weight:600;letter-spacing:-.02em}
+#link{margin-left:auto;font-size:12px;color:var(--dim);display:flex;align-items:center;gap:6px}
+#dot{width:7px;height:7px;border-radius:50%;background:#f87171;transition:background .3s}
+#dot.up{background:var(--ok)}
+.banner{
+  background:#2a1f0e;border:1px solid #4a3714;color:#f5c46b;
+  padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:18px;display:none;
+}
+.card{
+  background:var(--card);border:1px solid var(--line);
+  border-radius:16px;padding:20px;margin-bottom:14px;
+}
+.top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px}
+.rname{font-size:14px;color:var(--dim);letter-spacing:.04em;text-transform:uppercase}
+.temp{font-size:44px;font-weight:250;letter-spacing:-.03em;line-height:1.05;font-variant-numeric:tabular-nums}
+.temp span{font-size:20px;color:var(--dim);font-weight:400}
+.temp.bad{color:#f87171;font-size:28px}
+.pill{
+  font-size:11px;padding:5px 11px;border-radius:99px;
+  border:1px solid var(--line);color:var(--dim);white-space:nowrap;
+}
+.pill.on{background:rgba(255,138,61,.14);border-color:var(--warm);color:var(--warm)}
+.row{display:flex;align-items:center;gap:14px;margin-top:14px}
+.row label{font-size:12px;color:var(--dim);width:60px;flex:none}
+.val{font-size:12px;color:var(--fg);width:46px;text-align:right;flex:none;font-variant-numeric:tabular-nums}
+input[type=range]{
+  -webkit-appearance:none;appearance:none;flex:1;height:4px;border-radius:99px;
+  background:var(--line);outline:none;
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:20px;height:20px;border-radius:50%;
+  background:var(--fg);cursor:pointer;border:none;
+}
+input[type=range]::-moz-range-thumb{
+  width:20px;height:20px;border-radius:50%;background:var(--fg);cursor:pointer;border:none;
+}
+input.warm::-webkit-slider-thumb{background:var(--warm)}
+input.warm::-moz-range-thumb{background:var(--warm)}
+footer{margin-top:26px;font-size:12px;color:var(--dim);display:flex;gap:14px;align-items:center}
+button{
+  background:var(--card);border:1px solid var(--line);color:var(--fg);
+  padding:9px 16px;border-radius:99px;font-size:12px;cursor:pointer;font-family:inherit;
+}
+button.active{border-color:var(--ok);color:var(--ok)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Chytrý domek</h1>
+  <div id="link"><span id="dot"></span><span id="linktext">připojuji…</span></div>
+</header>
+
+<div class="banner" id="simbanner">Simulace — GPIO není aktivní</div>
+<div id="rooms"></div>
+
+<footer>
+  <button id="modebtn">režim: —</button>
+  <span id="reason"></span>
+</footer>
+
+<script>
+const roomsEl = document.getElementById('rooms');
+const dot = document.getElementById('dot');
+const linktext = document.getElementById('linktext');
+let ws, dragging = null, built = false;
+
+function post(url, body){
+  return fetch(url, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(body)
+  });
+}
+
+function build(state){
+  roomsEl.innerHTML = '';
+  for(const [id, r] of Object.entries(state.rooms)){
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <div class="top">
+        <div>
+          <div class="rname">${r.name}</div>
+          <div class="temp" id="t-${id}">—</div>
+        </div>
+        <div class="pill" id="p-${id}">${r.has_heater ? 'topení' : 'bez topení'}</div>
+      </div>
+      <div class="row">
+        <label>Jas</label>
+        <input type="range" min="0" max="100" step="1" id="b-${id}" value="${r.brightness}">
+        <div class="val" id="bv-${id}">${Math.round(r.brightness)} %</div>
+      </div>
+      ${r.has_heater ? `
+      <div class="row">
+        <label>Cíl</label>
+        <input type="range" class="warm" min="15" max="35" step="0.5" id="g-${id}" value="${r.target}">
+        <div class="val" id="gv-${id}">${r.target.toFixed(1)} °C</div>
+      </div>` : ''}
+    `;
+    roomsEl.appendChild(card);
+
+    const b = card.querySelector(`#b-${id}`);
+    b.addEventListener('input', () => {
+      dragging = id;
+      document.getElementById(`bv-${id}`).textContent = Math.round(b.value) + ' %';
+      post(`/api/room/${id}`, {brightness: +b.value});
+    });
+    b.addEventListener('change', () => setTimeout(() => dragging = null, 400));
+
+    const g = card.querySelector(`#g-${id}`);
+    if(g){
+      g.addEventListener('input', () => {
+        dragging = id;
+        document.getElementById(`gv-${id}`).textContent = (+g.value).toFixed(1) + ' °C';
+        post(`/api/room/${id}`, {target: +g.value});
+      });
+      g.addEventListener('change', () => setTimeout(() => dragging = null, 400));
+    }
+  }
+  built = true;
+}
+
+function render(state){
+  if(!state || !state.rooms) return;
+  if(!built) build(state);
+
+  document.getElementById('simbanner').style.display = state.simulace ? 'block' : 'none';
+
+  for(const [id, r] of Object.entries(state.rooms)){
+    const t = document.getElementById(`t-${id}`);
+    if(r.sensor_ok && r.temp !== null){
+      t.className = 'temp';
+      t.innerHTML = r.temp.toFixed(1) + '<span> °C</span>';
+    } else {
+      t.className = 'temp bad';
+      t.textContent = 'čidlo mimo';
+    }
+
+    const pill = document.getElementById(`p-${id}`);
+    if(r.has_heater){
+      pill.className = 'pill' + (state.heater.on ? ' on' : '');
+      pill.textContent = state.heater.on ? 'topí' : 'topení';
+    }
+
+    if(dragging !== id){
+      document.getElementById(`b-${id}`).value = r.brightness;
+      document.getElementById(`bv-${id}`).textContent = Math.round(r.brightness) + ' %';
+      const g = document.getElementById(`g-${id}`);
+      if(g){
+        g.value = r.target;
+        document.getElementById(`gv-${id}`).textContent = r.target.toFixed(1) + ' °C';
+      }
+    }
+  }
+
+  const btn = document.getElementById('modebtn');
+  btn.textContent = 'režim: ' + state.mode;
+  btn.className = state.mode === 'auto' ? 'active' : '';
+  document.getElementById('reason').textContent = state.heater.reason;
+}
+
+document.getElementById('modebtn').addEventListener('click', async () => {
+  const now = document.getElementById('modebtn').textContent.includes('auto');
+  await post('/api/mode', {mode: now ? 'off' : 'auto'});
+});
+
+function connect(){
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+  ws.onopen = () => { dot.classList.add('up'); linktext.textContent = 'živě'; };
+  ws.onmessage = e => render(JSON.parse(e.data));
+  ws.onclose = () => {
+    dot.classList.remove('up');
+    linktext.textContent = 'odpojeno';
+    setTimeout(connect, 2000);
+  };
+}
+
+fetch('/api/state').then(r => r.json()).then(render).catch(() => {});
+connect();
+</script>
+</body>
+</html>

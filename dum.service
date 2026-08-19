@@ -1,0 +1,17 @@
+[Unit]
+Description=Chytry domek
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kheil
+WorkingDirectory=/home/kheil/smart-house
+ExecStart=/home/kheil/smart-house/.venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
