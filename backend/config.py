@@ -14,7 +14,7 @@ ROOMS = {
 HEATER_ROOM = "right"
 
 # --- Piny ------------------------------------------------------------------
-RELAY_PIN = 5          # BCM5 = fyzický pin 29. Výchozí pull-UP -> relé po bootu vypnuté.
+RELAY_PIN = 6          # BCM5 = fyzický pin 29. Výchozí pull-UP -> relé po bootu vypnuté.
 PWM_FREQ_HZ = 1000
 
 # --- Bezpečnost a regulace -------------------------------------------------

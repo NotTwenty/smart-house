@@ -94,6 +94,17 @@ function post(url, body){
   });
 }
 
+const pending = {}, timer = {};
+function queue(id, patch){
+  pending[id] = {...(pending[id] || {}), ...patch};
+  if(timer[id]) return;
+  timer[id] = setTimeout(() => {
+    timer[id] = null;
+    const p = pending[id]; pending[id] = null;
+    post(`/api/room/${id}`, p);
+  }, 100);
+}
+
 function build(state){
   roomsEl.innerHTML = '';
   for(const [id, r] of Object.entries(state.rooms)){
@@ -125,7 +136,7 @@ function build(state){
     b.addEventListener('input', () => {
       dragging = id;
       document.getElementById(`bv-${id}`).textContent = Math.round(b.value) + ' %';
-      post(`/api/room/${id}`, {brightness: +b.value});
+      queue(id, {brightness: +b.value});
     });
     b.addEventListener('change', () => setTimeout(() => dragging = null, 400));
 
@@ -134,7 +145,7 @@ function build(state){
       g.addEventListener('input', () => {
         dragging = id;
         document.getElementById(`gv-${id}`).textContent = (+g.value).toFixed(1) + ' °C';
-        post(`/api/room/${id}`, {target: +g.value});
+        queue(id, {target: +g.value});
       });
       g.addEventListener('change', () => setTimeout(() => dragging = null, 400));
     }
